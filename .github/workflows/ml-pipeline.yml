@@ -41,7 +41,7 @@ jobs:
 
       - name: Run Pytest QA Suite
         run: |
-          pytest tests/
+          PYTHONPATH=. pytest tests/
 
       - name: Trigger Kubeflow Pipeline Compilation Check
         run: |
