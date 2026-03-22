@@ -8,3 +8,8 @@ google-cloud-pipeline-components
 dvc[gs]
 scikit-learn
 matplotlib
+<<<<<<< HEAD
+=======
+kaggle
+cloudml-hypertune
+>>>>>>> 02384d4 (Implement a complete MLOps pipeline for a Cats vs Dogs classifier using DVC, Docker, GitHub Actions, and Keras 3/JAX on Vertex AI.)

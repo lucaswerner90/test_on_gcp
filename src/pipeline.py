@@ -2,215 +2,24 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
 
 from kfp import dsl
-from kfp.v2.dsl import (
+from kfp.dsl import (
     component,
     Input,
     Model,
     Output,
     Metrics,
     ClassificationMetrics,
-    Condition
+    If
 )
 from google_cloud_pipeline_components.v1.hyperparameter_tuning_job import HyperparameterTuningJobRunOp
 from google_cloud_pipeline_components.v1.batch_predict_job import ModelBatchPredictOp
 from google_cloud_pipeline_components.v1.model import ModelUploadOp as ModelImportOp
+from google_cloud_pipeline_components.types import artifact_types
 
-
-# Component 1: Data Validation
-@component(
-    base_image="python:3.10",
-    packages_to_install=["tensorflow", "tensorflow-data-validation", "pandas"]
-)
-def data_validation_op(unlabelled_data_gcs_path: str):
-    import tensorflow as tf
-    import tensorflow_data_validation as tfdv
-    import pandas as pd
-    import logging
-    
-    logging.info(f"Validating imagery at {unlabelled_data_gcs_path}...")
-    
-    file_paths = tf.io.gfile.glob(f"{unlabelled_data_gcs_path}/*/*")
-    if not file_paths:
-        file_paths = tf.io.gfile.glob(f"{unlabelled_data_gcs_path}/*")
-    
-    records = []
-    # Asserting up to 100 images for speed in validation gate
-    for path in file_paths[:100]:
-        img_raw = tf.io.read_file(path)
-        img = tf.image.decode_image(img_raw)
-        shape = img.shape
-        records.append({
-            "channels": shape[2] if len(shape) > 2 else 1,
-            "filename": path
-        })
-        
-    df = pd.DataFrame(records)
-    stats = tfdv.generate_statistics_from_dataframe(df)
-    
-    schema = tfdv.infer_schema(stats)
-    
-    # Assert RGB
-    tfdv.get_feature(schema, 'channels').presence.min_fraction = 1.0
-    tfdv.set_domain(schema, 'channels', tfdv.IntDomain(min=3, max=3))
-    
-    anomalies = tfdv.validate_statistics(statistics=stats, schema=schema)
-    
-    if anomalies.anomaly_info:
-        for feature_name, anomaly_info in anomalies.anomaly_info.items():
-            logging.error(f"TFDV Anomaly in {feature_name}: {anomaly_info.description}")
-        raise ValueError("Data Validation Failed: Anomalies found in image features (not RGB or standard format). Halting pipeline.")
-        
-    logging.info("TFDV: Data Validation passed. Images conform to RGB representations.")
-
-
-# Custom evaluation component using JAX and Keras 3
-@component(
-    base_image="python:3.10",
-    packages_to_install=[
-        "keras>=3.0.0", 
-        "jax[cuda12]", 
-        "tensorflow", 
-        "scikit-learn", 
-        "google-cloud-storage"
-    ]
-)
-def evaluate_model(
-    model_dir: str,
-    test_data_dir: str,
-    metrics: Output[Metrics],
-    classification_metrics: Output[ClassificationMetrics]
-) -> float:
-    import os
-    os.environ["KERAS_BACKEND"] = "jax"
-    
-    import keras
-    import tensorflow as tf
-    import numpy as np
-    from sklearn.metrics import confusion_matrix
-    
-    model_path = f"{model_dir}/model.keras" if tf.io.gfile.exists(f"{model_dir}/model.keras") else model_dir
-    model = keras.saving.load_model(model_path)
-
-    test_ds = keras.utils.image_dataset_from_directory(
-        test_data_dir,
-        image_size=(256, 256),
-        batch_size=32,
-        label_mode='binary',
-        shuffle=False
-    )
-    
-    loss, accuracy = model.evaluate(test_ds)
-    metrics.log_metric("accuracy", float(accuracy))
-    metrics.log_metric("loss", float(loss))
-    
-    predictions = model.predict(test_ds)
-    y_pred = (predictions > 0.5).astype("int32").flatten()
-    y_true = np.concatenate([y for x, y in test_ds], axis=0).flatten()
-    
-    cm = confusion_matrix(y_true, y_pred)
-    classification_metrics.log_confusion_matrix(["Cat", "Dog"], cm.tolist())
-    
-    return float(accuracy)
-
-
-# Champion vs Challenger Evaluation Component
-@component(
-    base_image="python:3.10",
-    packages_to_install=[
-        "keras>=3.0.0", 
-        "jax[cuda12]", 
-        "tensorflow", 
-        "google-cloud-aiplatform",
-        "google-cloud-storage"
-    ]
-)
-def champion_vs_challenger(
-    new_model_dir: str,
-    project_id: str,
-    region: str,
-    golden_dataset_dir: str,
-) -> bool:
-    import os
-    os.environ["KERAS_BACKEND"] = "jax"
-    
-    import logging
-    import keras
-    import tensorflow as tf
-    from google.cloud import aiplatform
-
-    def evaluate_accuracy(model_dir):
-        model_path = f"{model_dir}/model.keras" if tf.io.gfile.exists(f"{model_dir}/model.keras") else model_dir
-        model = keras.saving.load_model(model_path)
-        test_ds = keras.utils.image_dataset_from_directory(
-            golden_dataset_dir,
-            image_size=(256, 256),
-            batch_size=32,
-            label_mode='binary',
-            shuffle=False
-        )
-        _, accuracy = model.evaluate(test_ds)
-        return float(accuracy)
-
-    new_acc = evaluate_accuracy(new_model_dir)
-
-    aiplatform.init(project=project_id, location=region)
-    models = aiplatform.Model.list(filter='display_name="production-cats-dogs"', order_by="create_time desc")
-    
-    if not models:
-        logging.warning("No Champion model found in Registry. Challenger wins by default.")
-        return True
-
-    old_acc = evaluate_accuracy(models[0].uri)
-    return bool(new_acc > old_acc)
-
-
-# Hard Negative Mining Component
-@component(
-    base_image="python:3.10",
-    packages_to_install=[
-        "keras>=3.0.0", 
-        "jax[cuda12]", 
-        "tensorflow"
-    ]
-)
-def mine_hard_negatives_op(
-    model_artifact: Input[Model],
-    unlabelled_data_gcs_path: str,
-    output_review_path: str
-):
-    import os
-    os.environ["KERAS_BACKEND"] = "jax"
-    
-    import keras
-    import tensorflow as tf
-    import numpy as np
-    
-    model_path = f"{model_artifact.path}/model.keras" if tf.io.gfile.exists(f"{model_artifact.path}/model.keras") else model_artifact.path
-    model = keras.saving.load_model(model_path)
-    
-    unlabelled_ds = tf.keras.utils.image_dataset_from_directory(
-        unlabelled_data_gcs_path,
-        shuffle=False
-    )
-    
-    predictions = model.predict(unlabelled_ds)
-    confidences = predictions.flatten()
-    
-    hard_negative_indices = np.where((confidences >= 0.40) & (confidences <= 0.60))[0]
-    
-    file_paths = unlabelled_ds.file_paths
-    
-    if not tf.io.gfile.exists(output_review_path):
-        tf.io.gfile.makedirs(output_review_path)
-        
-    for idx in hard_negative_indices:
-        original_path = file_paths[idx]
-        conf = float(confidences[idx])
-        filename = os.path.basename(original_path)
-        name, ext = os.path.splitext(filename)
-        new_filename = f"{name}_{conf:.4f}{ext}"
-        new_path = f"{output_review_path.rstrip('/')}/{new_filename}"
-        tf.io.gfile.copy(original_path, new_path, overwrite=True)
+# Modularized Components
+from components.validation import data_validation_op
+from components.evaluate import evaluate_model, champion_vs_challenger
+from components.review import mine_hard_negatives_op
 
 
 @dsl.pipeline(
@@ -299,18 +108,27 @@ def cats_dogs_pipeline(
     ).after(eval_op)
 
     # Condition Check (Challenger Accuracy > Champion Accuracy)
-    with Condition(champ_vs_chall_op.output == True, name="champion_vs_challenger_check"):
+    with If(champ_vs_chall_op.output == True, name="champion_vs_challenger_check"):
+        
+        unmanaged_model_importer = dsl.importer(
+            artifact_uri=model_dir,
+            artifact_class=artifact_types.UnmanagedContainerModel,
+            metadata={
+                "containerSpec": {
+                    "imageUri": "us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-12:latest"
+                }
+            }
+        )
         
         # Component 3: XAI & Model Registry Import with Integrated Gradients
         model_upload_op = ModelImportOp(
             project=project_id,
             location=region,
             display_name="production-cats-dogs",
-            serving_container_image_uri="us-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-12:latest", 
-            artifact_uri=model_dir,
+            unmanaged_container_model=unmanaged_model_importer.output,
             explanation_metadata={
-                "inputs": {"image": {"input_tensor_name": "input_1"}},
-                "outputs": {"prediction": {"output_tensor_name": "dense_1"}}
+                "inputs": {"image": {"input_tensor_name": "images"}},
+                "outputs": {"prediction": {"output_tensor_name": "label"}}
             },
             explanation_parameters={
                 "integrated_gradients_attribution": {"step_count": 50}
@@ -332,7 +150,7 @@ def batch_scoring_pipeline(
 ):
     model_artifact = dsl.importer(
         artifact_uri=model_resource_name,
-        artifact_class=dsl.Model,
+        artifact_class=artifact_types.VertexModel,
         metadata={"resourceName": model_resource_name}
     )
     
@@ -353,8 +171,13 @@ def batch_scoring_pipeline(
 
 if __name__ == "__main__":
     import os
+    import argparse
     from kfp import compiler
     from google.cloud import aiplatform
+
+    parser = argparse.ArgumentParser(description="Compile and execute the Kubeflow Pipeline.")
+    parser.add_argument("--compile-only", action="store_true", help="Only generate the JSON artifacts without submitting to Vertex AI.")
+    args = parser.parse_args()
 
     logging.info("Compiling the Kubeflow Pipelines...")
     try:
@@ -370,9 +193,17 @@ if __name__ == "__main__":
             package_path="batch_scoring_pipeline.json"
         )
         logging.info("Pipelines compiled successfully.")
+        
+        if args.compile_only:
+            logging.info("Exiting early: --compile-only flag passed. No jobs will be submitted to Vertex AI.")
+            exit(0)
 
-        project_id = os.environ.get("PROJECT_ID", "YOUR_PROJECT_ID")
-        region = os.environ.get("REGION", "us-central1")
+        project_id = os.environ.get("GCP_PROJECT_ID", None)
+        region = os.environ.get("GCP_REGION", None)
+        bucket_url = os.environ.get("GCP_BUCKET_URL", None)
+
+        if not project_id or not region or not bucket_url:
+            raise ValueError("GCP_PROJECT_ID, GCP_REGION and GCP_BUCKET_URL must be set in environment variables")
 
         logging.info("Submitting PipelineJob to Vertex AI...")
         aiplatform.init(project=project_id, location=region)
@@ -382,12 +213,12 @@ if __name__ == "__main__":
             parameter_values={
                 "project_id": project_id,
                 "region": region,
-                "staging_bucket": "gs://cats-dogs-mlops-artifacts/staging",
-                "training_data_dir": "gs://cats-dogs-mlops-artifacts/data/train",
-                "test_data_dir": "gs://cats-dogs-mlops-artifacts/data/golden_set",
+                "staging_bucket": f"{bucket_url}/staging",
+                "training_data_dir": f"{bucket_url}/data/train",
+                "test_data_dir": f"{bucket_url}/data/golden_set",
                 "task_image_uri": f"{region}-docker.pkg.dev/{project_id}/cats-dogs-repo/cats-dogs-jax:latest",
-                "unlabelled_data_gcs_path": "gs://cats-dogs-mlops-artifacts/data/unlabelled",
-                "review_gcs_path": "gs://cats-dogs-mlops-artifacts/data/review"
+                "unlabelled_data_gcs_path": f"{bucket_url}/data/unlabelled",
+                "review_gcs_path": f"{bucket_url}/data/review"
             }
         )
         job.submit()

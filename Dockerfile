@@ -14,7 +14,11 @@
 #    docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/YOUR_REPO_NAME/cats-dogs-jax:latest
 # ==============================================================================
 
+<<<<<<< HEAD
 FROM python:3.10-slim
+=======
+FROM python:3.12-slim
+>>>>>>> 02384d4 (Implement a complete MLOps pipeline for a Cats vs Dogs classifier using DVC, Docker, GitHub Actions, and Keras 3/JAX on Vertex AI.)
 
 # Set the Keras 3 backend to JAX globally
 ENV KERAS_BACKEND=jax

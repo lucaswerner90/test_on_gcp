@@ -1,3 +1,8 @@
+INSTRUCTIONS.md
+# Kubeflow pipeline
+batch_scoring_pipeline.json
+pipeline.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -6,6 +11,11 @@ __pycache__/
 # venv
 .venv
 
+# Env variables
+.env
+
+# Data
+data/
 
 # DVC files
 .dvc/
