@@ -1,0 +1,13 @@
+# Local Data and DVC
+data/
+.dvc/cache
+
+# Virtual Environments
+venv/
+.venv/
+
+# Python Caches and Git
+__pycache__/
+*.py[cod]
+.git/
+.gitignore

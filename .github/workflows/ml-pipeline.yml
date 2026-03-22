@@ -1,0 +1,50 @@
+name: Vertex AI ML Pipeline Trigger
+
+on:
+  push:
+    branches:
+      - main
+  # Also allow manual triggering from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    
+    # Required for workload identity federation
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          # You need to configure Workload Identity Federation in GCP
+          workload_identity_provider: 'projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'your-service-account@your-project-id.iam.gserviceaccount.com'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Requirements
+        run: |
+          python -m pip install --upgrade pip
+          # Assuming you might have a requirements.txt, otherwise install directly:
+          pip install kfp google-cloud-aiplatform google-cloud-pipeline-components tensorflow pytest keras jax
+
+      - name: Run Pytest QA Suite
+        run: |
+          pytest tests/
+
+      - name: Trigger Kubeflow Pipeline
+        run: |
+          # This assumes your pipeline.py has logic to compile and submit the PipelineJob
+          # when executed as a __main__ entry point.
+          python src/pipeline.py

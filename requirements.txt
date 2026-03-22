@@ -1,0 +1,10 @@
+keras>=3.0.0
+jax
+jaxlib
+tensorflow
+google-cloud-aiplatform
+kfp
+google-cloud-pipeline-components
+dvc[gs]
+scikit-learn
+matplotlib
