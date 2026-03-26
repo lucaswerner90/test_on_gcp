@@ -1,6 +1,13 @@
 from kfp.dsl import component, Output, Metrics, ClassificationMetrics
 
-# Custom evaluation component using JAX and Keras 3
+"""
+Model Evaluation Component
+
+Goal: To compute offline validation metrics against the "Golden" test dataset 
+using the trained Keras 3 (JAX backend) model. This logs essential metrics 
+such as Accuracy, Loss, and the detailed Confusion Matrix directly to the 
+Kubeflow UI for human review before any deployment decisions are made.
+"""
 @component(
     base_image="python:3.10",
     packages_to_install=[
@@ -57,7 +64,15 @@ def evaluate_model(
     return float(accuracy)
 
 
-# Champion vs Challenger Evaluation Component
+"""
+Champion vs Challenger (Model Promotion) Component
+
+Goal: To act as a deployment safeguard. It compares the newly trained model ("Challenger")
+against the existing production model ("Champion") found in the Vertex AI Model Registry.
+Both models are evaluated on the exact same Golden Dataset. If the new model performs better,
+this component returns True, allowing the pipeline to proceed with deploying the new model.
+Otherwise, it returns False and halts deployment.
+"""
 @component(
     base_image="python:3.10",
     packages_to_install=[

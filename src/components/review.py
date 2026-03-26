@@ -1,6 +1,14 @@
 from kfp.dsl import component, Input, Model
 
-# Hard Negative Mining Component
+"""
+Hard Negative Mining (Active Learning) Component
+
+Goal: To autonomously identify "confusing" examples from mass unlabelled data buckets where 
+the model is highly uncertain (confidence between 0.40 and 0.60). By exporting these 
+specific images to a Human Review bucket, we create an Active Learning data-flywheel.
+This component specifically uses tf.io.gfile to write directly to GCS because ephemeral 
+Vertex AI containers securely lack the Git SSH keys needed to push via DVC during runtime.
+"""
 @component(
     base_image="python:3.10",
     packages_to_install=[

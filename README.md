@@ -76,6 +76,11 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
     --member="serviceAccount:pipeline-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/storage.admin"
+
+# Assign Service Account User role (Required to submit jobs as itself)
+gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+    --member="serviceAccount:pipeline-runner@YOUR_PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
 ```
 
 ## 4. Local Setup & Version Control
@@ -129,11 +134,11 @@ pytest tests/
 ```
 
 ### 2. Local Model Training
-Run the core Keras 3 / JAX training script locally by passing a local directory path instead of a `gs://` bucket path. This delegates the intense matrix multiplications to your local CPU (or a local GPU if properly configured).
+Run the core Keras 3 / JAX training script locally. Note that `task.py` now implements **DVC Data Rehydration**, meaning it will automatically run `dvc pull` to fetch the data from GCS into your local `./data/` folder before compiling the JAX graph.
 
-**Tip for faster iteration:** You can append the `--images-per-class N` argument to dynamically instantly build a perfectly balanced micro-subset of the data using zero-cost symlinks, rather than training on all 25,000 images natively!
+**Tip for faster iteration:** You can append the `--images-per-class N` argument to instantly build a perfectly balanced micro-subset of the data using zero-cost symlinks!
 ```bash
-python src/task.py --data-dir data/PetImages/ --learning-rate 0.001 --conv-filters 32 --images-per-class 50 --epochs 5
+python src/task.py --data-dir data --learning-rate 0.001 --conv-filters 32 --images-per-class 50 --epochs 5
 ```
 
 ### 3. Pipeline Graph Compilation
@@ -153,11 +158,10 @@ pytest tests/
 ```
 
 **Step 2: Trigger the Vertex Pipeline:**
+Since the pipeline script dynamically reads configuration from the environment, you just need to source your `.env` file first.
 ```bash
-python src/pipeline.py \
-    --project-id YOUR_PROJECT_ID \
-    --region us-central1 \
-    --data-dir gs://{BUCKET_URL}/dataset
+set -a; source .env; set +a
+python src/pipeline.py
 ```
 
 **Step 3: Ping the Live Endpoint:**
@@ -175,7 +179,7 @@ When deep learning systems fail securely in the cloud, finding the exact error i
 
 ### Vertex AI Pipeline Fails Immediately
 If your component instantly enters a failed state (usually within 3-5 seconds of dispatch), it is almost exclusively an IAM or base-image boot error.
-*Fix:* Ensure the `pipeline-runner` Service Account was correctly attached during submission and has the `roles/storage.admin` and `roles/aiplatform.user` IAM roles assigned.
+*Fix:* Ensure the `pipeline-runner` Service Account was correctly attached during submission and has the `roles/storage.admin`, `roles/aiplatform.user`, and `roles/iam.serviceAccountUser` IAM roles assigned.
 
 ### My model is training on CPU instead of GPU locally
 JAX operates with a silent fallback mode—if it cannot find CUDA/CUDNN, it will silently map matrices to the CPU.

@@ -9,6 +9,8 @@ def deploy_model(project_id: str, location: str):
     aiplatform.init(project=project_id, location=location)
 
     # 1. Fetch the latest model from the Vertex AI Registry named "production-cats-dogs"
+    # Note: "production-cats-dogs" is the literal hardcoded display_name assigned to the 
+    # model by the `ModelImportOp` during the final step of the training pipeline (see src/pipeline.py).
     logging.info("Fetching the latest model 'production-cats-dogs' from Registry...")
     
     # List models with the given display name, ordered by creation time descending
