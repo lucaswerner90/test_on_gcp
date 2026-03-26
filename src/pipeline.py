@@ -221,7 +221,12 @@ if __name__ == "__main__":
                 "review_gcs_path": f"{bucket_url}/data/review"
             }
         )
-        job.submit()
+        
+        # Explicitly run the pipeline under the dedicated pipeline-runner service account
+        # instead of the default Compute Engine account, which lacks required permissions.
+        service_account = os.environ.get("GCP_SERVICE_ACCOUNT", f"pipeline-runner@{project_id}.iam.gserviceaccount.com")
+        job.submit(service_account=service_account)
+        
         logging.info("Pipeline submission successful.")
     except Exception as e:
         logging.warning(f"Pipeline submission skipped or failed: {e}")
