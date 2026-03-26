@@ -33,6 +33,12 @@ gcloud projects add-iam-policy-binding practice-ml-project-402717 \
 ```
 
 ```bash
+gcloud projects add-iam-policy-binding practice-ml-project-402717 \
+    --member="serviceAccount:pipeline-runner@practice-ml-project-402717.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
+```
+
+```bash
 source .venv/bin/activate
 dvc remote add -d gcs-remote gs://dogs-vs-cats-bucket/dvc-store
 ```
