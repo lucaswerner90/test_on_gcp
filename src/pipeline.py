@@ -227,6 +227,13 @@ if __name__ == "__main__":
         service_account = os.environ.get("GCP_SERVICE_ACCOUNT", f"pipeline-runner@{project_id}.iam.gserviceaccount.com")
         job.submit(service_account=service_account)
         
-        logging.info("Pipeline submission successful.")
+        # After submission, job.name is automatically populated with the unique run ID
+        dashboard_url = (
+            f"https://console.cloud.google.com/vertex-ai/locations/{region}/"
+            f"pipelines/runs/{job.name}?project={project_id}"
+        )
+        
+        logging.info("🚀 LIFTOFF! Pipeline submitted successfully.")
+        logging.info(f"📍 VIEW YOUR PIPELINE LIVE HERE: \n{dashboard_url}")
     except Exception as e:
         logging.warning(f"Pipeline submission skipped or failed: {e}")
