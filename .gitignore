@@ -114,3 +114,4 @@ Pipfile.lock
 
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include
+/data

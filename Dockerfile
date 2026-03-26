@@ -14,11 +14,7 @@
 #    docker push us-central1-docker.pkg.dev/YOUR_PROJECT_ID/YOUR_REPO_NAME/cats-dogs-jax:latest
 # ==============================================================================
 
-<<<<<<< HEAD
-FROM python:3.10-slim
-=======
 FROM python:3.12-slim
->>>>>>> 02384d4 (Implement a complete MLOps pipeline for a Cats vs Dogs classifier using DVC, Docker, GitHub Actions, and Keras 3/JAX on Vertex AI.)
 
 # Set the Keras 3 backend to JAX globally
 ENV KERAS_BACKEND=jax
@@ -34,8 +30,13 @@ COPY requirements.txt .
 # Install tensorflow-cpu for CPU-bound tf.data pipelines, and jax[cuda12] for GPU matrix multiplication.
 RUN sed -i '/^tensorflow/d' requirements.txt && \
     pip install --no-cache-dir --upgrade pip && \
+    pip install "dvc[gs]" && \
     pip install --no-cache-dir tensorflow-cpu "jax[cuda12]" && \
     pip install --no-cache-dir -r requirements.txt
+
+# Do NOT copy the raw data/ directory! Data rehydration will organically pull it via DVC at runtime.
+COPY .dvc/ /app/.dvc/
+COPY *.dvc /app/
 
 COPY src/ src/
 COPY tests/ tests/

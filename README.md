@@ -30,8 +30,6 @@ Instead of static runs, the pipeline utilizes **Google Vizier**. Vizier dynamica
 ### Explainable AI (XAI)
 To demystify deep learning decisions, the Vertex Registry utilizes **Integrated Gradients**. This feature allows Vertex AI to generate pixel-level heatmaps explaining exactly *why* the JAX model predicted Cat or Dog, pinpointing specific morphological features (like ear shapes or fur patterns) that swayed the sigmoid output.
 
-<<<<<<< HEAD
-=======
 ### Advanced Binary Metrics Evaluation
 Instead of solely tracking Accuracy (which can obscure dataset imbalances), the training loop natively measures and exports several advanced metrics to the Vertex AI UI for detailed tradeoff analysis:
 
@@ -41,7 +39,6 @@ Instead of solely tracking Accuracy (which can obscure dataset imbalances), the 
 
 Because the model utilizes a Keras multi-output dictionary format, these metrics are perfectly bound to the `label` tensor and render beautiful, simultaneous training curves directly into TensorBoard!
 
->>>>>>> 02384d4 (Implement a complete MLOps pipeline for a Cats vs Dogs classifier using DVC, Docker, GitHub Actions, and Keras 3/JAX on Vertex AI.)
 ## 3. Day 0 Infrastructure Setup
 
 Before any pipeline code executes natively, the Google Cloud environment must be initialized. Run these commands from an authenticated terminal to establish the infrastructure.
@@ -102,18 +99,15 @@ pip install -r requirements.txt
 **3. Initialize DVC & link remote storage:**
 ```bash
 dvc init
-dvc remote add -d gcs-remote gs://cats-dogs-mlops-artifacts/dvc-store
+dvc remote add -d gcs-remote gs://{BUCKET_URL}
 ```
 
-<<<<<<< HEAD
-=======
 **4. Download the Dataset:**
 In order for the project to work locally, you need to download and extract the dataset. Execute the bash script which uses the Kaggle API to automatically pull it into the `data/` directory:
 ```bash
 ./download_data.sh
 ```
 
->>>>>>> 02384d4 (Implement a complete MLOps pipeline for a Cats vs Dogs classifier using DVC, Docker, GitHub Actions, and Keras 3/JAX on Vertex AI.)
 ## 5. Quality Assurance & The Data Flywheel
 
 The **Golden Dataset** is an immutable test set composed entirely of edge cases. We actively hunt down:
@@ -122,11 +116,7 @@ The **Golden Dataset** is an immutable test set composed entirely of edge cases.
 - **Environmental Nightmares:** Severe occlusions, bad lighting, and heavy motion blur.
 
 ### The Automated Active Learning Loop
-<<<<<<< HEAD
-Our Data Flywheel automatically traps the model's blind spots. The automated active learning loop via `src/mine_hard_negatives.py` continually iterates over unlabelled image dumps, flagging inferences where the confidence falls perfectly between `0.40 - 0.60`. These high-entropy anomalies are extracted, manually reviewed, and continuously tracked via DVC for the next CI/CD run, ensuring the model's domain authority monotonically increases.
-=======
 Our Data Flywheel automatically traps the model's blind spots. The automated active learning loop is built directly into our Kubeflow Pipeline (`src/pipeline.py` via the `mine_hard_negatives_op` component). It continually iterates over unlabelled image dumps during pipeline execution, flagging inferences where the confidence falls perfectly between `0.40 - 0.60`. These high-entropy anomalies are copied to a review bucket, manually reviewed, and continuously tracked via DVC for the next CI/CD run, ensuring the model's domain authority monotonically increases.
->>>>>>> 02384d4 (Implement a complete MLOps pipeline for a Cats vs Dogs classifier using DVC, Docker, GitHub Actions, and Keras 3/JAX on Vertex AI.)
 
 ## 6. Local Pre-Flight Execution (Testing Without the Cloud)
 
@@ -148,6 +138,7 @@ python src/task.py --data-dir data/PetImages/ --learning-rate 0.001 --conv-filte
 
 ### 3. Pipeline Graph Compilation
 We do not execute Kubeflow Pipeline steps natively on our local machines (this includes the Hard Negative Mining, which runs exclusively as a pipeline component). Instead, we compile the `src/pipeline.py` script locally to catch any DAG (Directed Acyclic Graph) structural errors, missing input artifacts, or Python syntax issues. If the process successfully generates a `pipeline.json` file, the graph is structurally sound and ready for Vertex AI.
+
 ```bash
 python src/pipeline.py --compile-only
 ```
@@ -166,7 +157,7 @@ pytest tests/
 python src/pipeline.py \
     --project-id YOUR_PROJECT_ID \
     --region us-central1 \
-    --data-dir gs://cats-dogs-mlops-artifacts/dataset
+    --data-dir gs://{BUCKET_URL}/dataset
 ```
 
 **Step 3: Ping the Live Endpoint:**

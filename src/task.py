@@ -9,7 +9,17 @@ import argparse
 import keras
 import tensorflow as tf
 from keras import layers, models
+import subprocess
 import hypertune
+
+def pull_dvc_data():
+    logging.info("Starting DVC Data Rehydration: Pulling dataset from GCS...")
+    try:
+        subprocess.run(["dvc", "pull"], check=True)
+        logging.info("DVC pull completed successfully. Data is ready in local path.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"DVC pull failed: {e}")
+        raise
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Cats vs Dogs Vertex AI Training Task (Keras 3 + JAX)")
@@ -170,14 +180,17 @@ def create_subset_dataset(data_dir, images_per_class):
     return subset_dir
 
 def main():
+    pull_dvc_data()
     args = parse_args()
     
-    logging.info("Scanning for corrupted JFIF images...")
-    clean_dataset(args.data_dir)
+    # DVC pulls to the local "data" directory, dynamically overriding GCS parameters
+    data_dir = "data"
     
-    data_dir = args.data_dir
+    logging.info("Scanning for corrupted JFIF images...")
+    clean_dataset(data_dir)
+    
     if args.images_per_class:
-        data_dir = create_subset_dataset(args.data_dir, args.images_per_class)
+        data_dir = create_subset_dataset(data_dir, args.images_per_class)
     
     logging.info(f"Loading data from {data_dir}...")
     train_ds, val_ds = get_datasets(data_dir)
